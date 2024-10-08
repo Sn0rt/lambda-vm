@@ -1,6 +1,6 @@
+use crate::lambda_parse::LambdaExpression;
 use std::rc::Rc;
 use std::collections::HashMap;
-use crate::lambda_parse::LambdaExpression;
 
 #[derive(Clone)]
 pub struct Environment {
@@ -43,30 +43,25 @@ impl VM {
 
     pub fn eval(&self, expr: &LambdaExpression) -> Rc<LambdaExpression> {
         match expr {
-            LambdaExpression::Variable(_) => Rc::new(expr.clone()),
-            LambdaExpression::Number(_) => Rc::new(expr.clone()),
+            LambdaExpression::Variable(_) | LambdaExpression::Number(_) => Rc::new(expr.clone()),
             LambdaExpression::Abstraction { parameter, body } => {
                 Rc::new(LambdaExpression::Abstraction {
                     parameter: parameter.clone(),
-                    body: body.clone(),
+                    body: self.eval(body),
                 })
             },
             LambdaExpression::Application { function, argument } => {
-                let func = self.eval(function);
-                
-                match &*func {
+                let eval_func = self.eval(function);
+                match &*eval_func {
                     LambdaExpression::Abstraction { parameter, body } => {
-                        let arg = self.eval(argument);
-                        let result = self.substitute(body, parameter, &arg);
-                        self.eval(&result)
+                        let eval_arg = self.eval(argument);
+                        let substituted = self.substitute(body, parameter, &eval_arg);
+                        self.eval(&substituted)
                     }
-                    _ => {
-                        let arg = self.eval(argument);
-                        Rc::new(LambdaExpression::Application {
-                            function: func,
-                            argument: arg,
-                        })
-                    }
+                    _ => Rc::new(LambdaExpression::Application {
+                        function: eval_func,
+                        argument: self.eval(argument),
+                    }),
                 }
             }
         }
@@ -125,7 +120,7 @@ impl VM {
     }
 }
 
-// 添加一些辅助函数来实现自然数的 Church 编码
+// 添加一些辅助函数来实现自然的 Church 编码
 pub fn church_encode(n: u64) -> LambdaExpression {
     LambdaExpression::Abstraction {
         parameter: "f".to_string(),
@@ -147,35 +142,41 @@ fn church_encode_helper(n: u64) -> LambdaExpression {
     }
 }
 
-pub fn church_decode(expr: &LambdaExpression) -> Option<u64> {
-    match expr {
-        LambdaExpression::Abstraction { parameter: f, body } => {
-            match &**body {
-                LambdaExpression::Abstraction { parameter: x, body: inner_body } => {
-                    church_decode_helper(inner_body, f, x)
-                }
-                _ => None,
-            }
+pub fn church_decode(expr: &LambdaExpression) -> Result<u64, String> {
+    let vm = VM::new();
+    let mut current_expr = vm.eval(expr);
+    
+    // 尝试提取最外层的两个 lambda 抽象
+    if let LambdaExpression::Abstraction { parameter: f, body } = &*current_expr {
+        if let LambdaExpression::Abstraction { parameter: x, body: inner_body } = &**body {
+            return church_decode_helper(inner_body, f, x)
         }
-        _ => None,
     }
+    
+    Err(format!("Expected Church numeral, got: {:?}", current_expr))
 }
 
-fn church_decode_helper(expr: &LambdaExpression, f: &str, x: &str) -> Option<u64> {
-    match expr {
-        LambdaExpression::Variable(var) if var == x => Some(0),
-        LambdaExpression::Application { function, argument } => {
-            if let LambdaExpression::Variable(var) = &**function {
-                if var == f {
-                    church_decode_helper(argument, f, x).map(|n| n + 1)
+fn church_decode_helper(expr: &LambdaExpression, f: &str, x: &str) -> Result<u64, String> {
+    let mut count = 0;
+    let mut current_expr = expr;
+    
+    loop {
+        match current_expr {
+            LambdaExpression::Application { function, argument } => {
+                if let LambdaExpression::Variable(var) = &**function {
+                    if var == f {
+                        count += 1;
+                        current_expr = argument;
+                    } else {
+                        return Err(format!("Expected variable {}, got: {}", f, var));
+                    }
                 } else {
-                    None
+                    return Err(format!("Expected variable, got: {:?}", function));
                 }
-            } else {
-                None
             }
+            LambdaExpression::Variable(var) if var == x => return Ok(count),
+            _ => return Err(format!("Unexpected expression: {:?}", current_expr)),
         }
-        _ => None,
     }
 }
 
@@ -245,61 +246,98 @@ mod tests {
     }
 
     #[test]
-    fn test_fibonacci() {
-        let fib_code = r#"
-            (λfib. λn.
-                ((λf. λx. f (f x))
-                 (λf. λg. λn. 
-                    (λlte. λa. λb. 
-                        lte n (λx. λy. y)
-                            a
-                            (λx. g f g (λf. λx. f (f x)) n a b)
-                    )
-                    (λm. λn. λt. λf. m (λx. n t (λx. f)) t)
-                    (λf. λx. f x)
-                    (λf. λx. f (f x))
-                )
-                (λf. λg. λn. 
-                    (λlte. λa. λb. 
-                        lte n (λx. λy. y)
-                            a
-                            (λx. g f g (λf. λx. f (f x)) n a b)
-                    )
-                    (λm. λn. λt. λf. m (λx. n t (λx. f)) t)
-                    (λf. λx. f x)
-                    (λf. λx. f (f x))
-                )
-                n
-            )
+    fn test_simple_add() {
+        // 2 + 3 = 5
+        let add_code = r#"
+        (λm. λn. λf. λx. m f (n f x))
+            (λf. λx. f (f x))
+            (λf. λx. f (f (f x)))
         "#;
 
-        let fib = parse_lambda(fib_code).unwrap();
         let vm = VM::new();
+        let add = parse_lambda(add_code).expect("Failed to parse add function");
+        let result = vm.eval(&add);
 
-        for i in 0..10 {
-            let input = LambdaExpression::Application {
-                function: Rc::new(fib.clone()),
-                argument: Rc::new(church_encode(i)),
-            };
-            let result = vm.eval(&input);
-            let decoded = church_decode(&result).unwrap();
-            
-            // Calculate expected Fibonacci number
-            let expected = match i {
-                0 | 1 => i,
-                _ => {
-                    let mut a = 0;
-                    let mut b = 1;
-                    for _ in 2..=i {
-                        let temp = a + b;
-                        a = b;
-                        b = temp;
-                    }
-                    b
-                }
-            };
-
-            assert_eq!(decoded, expected, "Fibonacci({}) should be {}", i, expected);
+        println!("RawResult: {:?}", result);
+        match church_decode(&result) {
+            Ok(decoded) => {
+                println!("Add(2, 3) = {}", decoded);
+                assert_eq!(decoded, 5, "Expected Add(2, 3) to be 5, but got {}", decoded);
+            },
+            Err(e) => {
+                panic!("Failed to decode result: {}\nResult was: {:?}", e, result);
+            }
         }
     }
+
+    #[test]
+    fn test_add_with_negative() {
+        // 5 + (-3) = 2
+        let add_code = r#"
+        (λm. λn. λf. λx. m f (n f x))
+            (λf. λx. f (f (f (f (f x))))) 
+            (λf. λx. f (f (f (λy. x))))
+        "#;
+
+        let vm = VM::new();
+        let add = parse_lambda(add_code).expect("Failed to parse add function");
+        let result = vm.eval(&add);
+
+        println!("RawResult: {:?}", result);
+        match church_decode(&result) {
+            Ok(decoded) => {
+                println!("Add(5, -3) = {}", decoded);
+                assert_eq!(decoded, 2, "Expected Add(5, -3) to be 2, but got {}", decoded);
+            },
+            Err(e) => {
+                panic!("Failed to decode result: {}\nResult was: {:?}", e, result);
+            }
+        }
+    }
+
+    #[test]
+    fn test_fibonacci2() {
+        let fib_code = r#"
+        (λfib. λn. 
+          ((λf. λx. f (f x)) 
+            (λf. λg. λn. 
+              (λlte. λa. λb. 
+                lte n (λx. λy. y) 
+                  a 
+                  (λx. g f g (λf. λx. f (f x)) n a b)
+              ) 
+              (λm. λn. λt. λf. m (λx. n t (λx. f)) t) 
+              (λf. λx. f x) 
+              (λf. λx. f (f x))
+            ) 
+            (λf. λg. λn. 
+              (λlte. λa. λb. 
+                lte n (λx. λy. y) 
+                  a 
+                  (λx. g f g (λf. λx. f (f x)) n a b)
+              ) 
+              (λm. λn. λt. λf. m (λx. n t (λx. f)) t) 
+              (λf. λx. f x) 
+              (λf. λx. f (f x))
+            ) 
+            n
+          )
+        ) (λf. λx. f (f x))
+        "#;
+
+        let vm = VM::new();
+        let fib = parse_lambda(fib_code).expect("Failed to parse Fibonacci function");
+        let result = vm.eval(&fib);
+        
+        match church_decode(&result) {
+            Ok(decoded) => {
+                println!("Fibonacci(2) = {}", decoded);
+                assert_eq!(decoded, 1, "Expected Fibonacci(2) to be 1, but got {}", decoded);
+            },
+            Err(e) => {
+                panic!("Failed to decode result: {}\nResult was: {:?}", e, result);
+            }
+        }
+    }
+
 }

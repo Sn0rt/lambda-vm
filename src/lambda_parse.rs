@@ -8,7 +8,7 @@ use std::fmt;
 // <application> :== ( <expression> <expression> )
 // <variable>    :== v1 | v2 | ...
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum LambdaExpression {
     Variable(String),
     Abstraction {
@@ -19,7 +19,19 @@ pub enum LambdaExpression {
         function: Rc<LambdaExpression>,
         argument: Rc<LambdaExpression>,
     },
-    Number(u64), // 表示自然数
+    Number(i64),
+    Pred(Rc<LambdaExpression>),
+    Succ(Rc<LambdaExpression>),
+    Pair(Rc<LambdaExpression>, Rc<LambdaExpression>),
+    Fst(Rc<LambdaExpression>),
+    Snd(Rc<LambdaExpression>),
+    Boolean(bool),
+    And(Rc<LambdaExpression>, Rc<LambdaExpression>),
+    Or(Rc<LambdaExpression>, Rc<LambdaExpression>),
+    Not(Rc<LambdaExpression>),
+    IsZero(Rc<LambdaExpression>),
+    Multiply(Rc<LambdaExpression>, Rc<LambdaExpression>),
+    IfElse(Rc<LambdaExpression>, Rc<LambdaExpression>, Rc<LambdaExpression>),
 }
 
 impl fmt::Debug for LambdaExpression {
@@ -35,32 +47,50 @@ impl fmt::Display for LambdaExpression {
             LambdaExpression::Abstraction { parameter, body } => write!(f, "(λ{}. {})", parameter, body),
             LambdaExpression::Application { function, argument } => write!(f, "({} {})", function, argument),
             LambdaExpression::Number(n) => write!(f, "{}", n),
+            LambdaExpression::Pred(expr) => write!(f, "(pred {})", expr),
+            LambdaExpression::Succ(expr) => write!(f, "(succ {})", expr),
+            LambdaExpression::Pair(first, second) => write!(f, "(pair {} {})", first, second), // 新增
+            LambdaExpression::Fst(expr) => write!(f, "(fst {})", expr),
+            LambdaExpression::Snd(expr) => write!(f, "(snd {})", expr),
+            LambdaExpression::Boolean(b) => write!(f, "{}", b),
+            LambdaExpression::And(left, right) => write!(f, "({} and {})", left, right),
+            LambdaExpression::Or(left, right) => write!(f, "({} or {})", left, right),
+            LambdaExpression::Not(expr) => write!(f, "(not {})", expr),
+            LambdaExpression::IsZero(expr) => write!(f, "(is_zero {})", expr),
+            LambdaExpression::Multiply(left, right) => write!(f, "({} * {})", left, right),
+            LambdaExpression::IfElse(condition, then_expr, else_expr) =>
+                write!(f, "(if {} then {} else {})", condition, then_expr, else_expr),
         }
     }
 }
 
 #[derive(Debug)]
 pub struct ParseError {
-    message: String,
+    pub message: String,
 }
 
 pub fn parse_lambda(input: &str) -> Result<LambdaExpression, ParseError> {
+    println!("Parsing input: {}", input);
     let mut tokens = tokenize(input);
+    println!("Tokenized: {:?}", tokens.clone().collect::<Vec<_>>());
     let result = parse_lambda_expression(&mut tokens);
-    
-    // 确保所有的 token 都被消耗
+
     if tokens.peek().is_some() {
+        println!("Unexpected tokens at end of input: {:?}", tokens.collect::<Vec<_>>());
         Err(ParseError { message: "Unexpected tokens at end of input".to_string() })
     } else {
+        println!("Parsed result: {:?}", result);
         result
     }
 }
 
-fn tokenize(input: &str) -> Peekable<IntoIter<String>> {
+// 将 tokenize 函数设为公开
+pub fn tokenize(input: &str) -> Peekable<IntoIter<String>> {
     let mut tokens = Vec::new();
     let mut current_token = String::new();
+    let mut chars = input.chars().peekable();
 
-    for ch in input.chars() {
+    while let Some(ch) = chars.next() {
         match ch {
             '(' | ')' | '.' | 'λ' | '\\' => {
                 if !current_token.is_empty() {
@@ -75,6 +105,9 @@ fn tokenize(input: &str) -> Peekable<IntoIter<String>> {
                     current_token = String::new();
                 }
             }
+            '/' if chars.peek() == Some(&'/') => {
+                chars.find(|&c| c == '\n');
+            }
             _ => current_token.push(ch),
         }
     }
@@ -87,36 +120,38 @@ fn tokenize(input: &str) -> Peekable<IntoIter<String>> {
 }
 
 fn parse_lambda_expression(tokens: &mut Peekable<IntoIter<String>>) -> Result<LambdaExpression, ParseError> {
+    println!("Entering parse_lambda_expression");
     let mut expr = parse_atomic_expression(tokens)?;
+    println!("Initial atomic expression: {:?}", expr);
 
     while let Some(token) = tokens.peek() {
         if token == ")" {
             break;
         }
-        // 如果下一个 token 是 "(", 我们需要解析一个新的表达式作为参数
-        if token == "(" {
-            tokens.next(); // 消耗左括号
-            let arg = parse_lambda_expression(tokens)?;
-            expect_token(tokens, ")")?;
-            expr = LambdaExpression::Application {
-                function: Rc::new(expr),
-                argument: Rc::new(arg),
-            };
+        if token == "*" {
+            tokens.next(); // consume "*"
+            let right = parse_atomic_expression(tokens)?;
+            expr = LambdaExpression::Multiply(Rc::new(expr), Rc::new(right));
+            println!("Parsed multiplication: {:?}", expr);
         } else {
             let arg = parse_atomic_expression(tokens)?;
+            println!("Parsed argument: {:?}", arg);
             expr = LambdaExpression::Application {
                 function: Rc::new(expr),
                 argument: Rc::new(arg),
             };
         }
+        println!("Updated expression: {:?}", expr);
     }
 
+    println!("Exiting parse_lambda_expression with: {:?}", expr);
     Ok(expr)
 }
 
 fn parse_atomic_expression(tokens: &mut Peekable<IntoIter<String>>) -> Result<LambdaExpression, ParseError> {
     match tokens.next() {
         Some(token) => {
+            println!("Parsing atomic expression, token: {}", token);
             match token.as_str() {
                 "λ" | "\\" => parse_abstraction(tokens),
                 "(" => {
@@ -124,18 +159,69 @@ fn parse_atomic_expression(tokens: &mut Peekable<IntoIter<String>>) -> Result<La
                     expect_token(tokens, ")")?;
                     Ok(inner_expr)
                 },
+                "pair" => {
+                    let first = parse_atomic_expression(tokens)?;
+                    let second = parse_atomic_expression(tokens)?;
+                    Ok(LambdaExpression::Pair(Rc::new(first), Rc::new(second)))
+                },
+                "true" => Ok(parse_lambda("λx. λy. x").unwrap()),
+                "false" => Ok(parse_lambda("λx. λy. y").unwrap()),
+                "ifelse" => Ok(parse_lambda("λp. λa. λb. p a b").unwrap()),
+                "add" => Ok(parse_lambda("λm. λn. λf. λx. m f (n f x)").unwrap()),
+                "Y" => Ok(parse_lambda("λf. (λx. f (x x)) (λx. f (x x))").unwrap()),
+                "pred" => parse_unary_op(tokens, LambdaExpression::Pred),
+                "succ" => parse_unary_op(tokens, LambdaExpression::Succ),
+                "fst" => parse_unary_op(tokens, LambdaExpression::Fst),
+                "snd" => parse_unary_op(tokens, LambdaExpression::Snd),
+                "and" => parse_binary_op(tokens, |a, b| LambdaExpression::And(a, b)),
+                "or" => parse_binary_op(tokens, |a, b| LambdaExpression::Or(a, b)),
+                "not" => parse_unary_op(tokens, LambdaExpression::Not),
+                "is_zero" => {
+                    let expr = parse_atomic_expression(tokens)?;
+                    Ok(LambdaExpression::IsZero(Rc::new(expr)))
+                },
+                "*" => parse_binary_op(tokens, |a, b| LambdaExpression::Multiply(a, b)),
                 _ => {
-                    // 尝试将 token 解析为数字
-                    if let Ok(num) = token.parse::<u64>() {
+                    if let Ok(num) = token.parse::<i64>() {
+                        println!("Parsed number: {}", num);
                         Ok(LambdaExpression::Number(num))
                     } else {
+                        println!("Parsed variable: {}", token);
                         Ok(LambdaExpression::Variable(token))
                     }
                 },
             }
         },
-        None => Err(ParseError { message: "Unexpected end of input".to_string() }),
+        None => {
+            println!("Unexpected end of input in parse_atomic_expression");
+            Err(ParseError { message: "Unexpected end of input".to_string() })
+        },
     }
+}
+
+fn parse_ifelse(tokens: &mut Peekable<IntoIter<String>>) -> Result<LambdaExpression, ParseError> {
+    let condition = parse_lambda_expression(tokens)?;
+    let then_expr = parse_lambda_expression(tokens)?;
+    let else_expr = parse_lambda_expression(tokens)?;
+    println!("Parsed ifelse: condition={:?}, then={:?}, else={:?}", condition, then_expr, else_expr);
+    Ok(LambdaExpression::IfElse(Rc::new(condition), Rc::new(then_expr), Rc::new(else_expr)))
+}
+
+fn parse_unary_op<F>(tokens: &mut Peekable<IntoIter<String>>, constructor: F) -> Result<LambdaExpression, ParseError>
+where
+    F: Fn(Rc<LambdaExpression>) -> LambdaExpression,
+{
+    let expr = parse_atomic_expression(tokens)?;
+    Ok(constructor(Rc::new(expr)))
+}
+
+fn parse_binary_op<F>(tokens: &mut Peekable<IntoIter<String>>, constructor: F) -> Result<LambdaExpression, ParseError>
+where
+    F: Fn(Rc<LambdaExpression>, Rc<LambdaExpression>) -> LambdaExpression,
+{
+    let left = parse_atomic_expression(tokens)?;
+    let right = parse_atomic_expression(tokens)?;
+    Ok(constructor(Rc::new(left), Rc::new(right)))
 }
 
 fn parse_abstraction(tokens: &mut Peekable<IntoIter<String>>) -> Result<LambdaExpression, ParseError> {
@@ -150,8 +236,7 @@ fn parse_abstraction(tokens: &mut Peekable<IntoIter<String>>) -> Result<LambdaEx
         return Err(ParseError { message: "Expected parameter after λ".to_string() });
     }
     let body = parse_lambda_expression(tokens)?;
-    
-    // 从最内层的抽象开始构建
+
     let mut expr = body;
     for param in parameters.into_iter().rev() {
         expr = LambdaExpression::Abstraction {
@@ -198,6 +283,30 @@ mod tests {
                 }
                 assert!(matches!(&*argument, LambdaExpression::Variable(name) if name == "y"));
             },
+            _ => panic!("Expected Application, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_inline_comments() {
+        let input = r#"
+        (λx. x)  // This is a comment
+        y"#;
+        let result = parse_lambda(input);
+        assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
+        let expr = result.unwrap();
+        println!("Parsed expression: {:?}", expr);
+        match expr {
+            LambdaExpression::Application { function, argument } => {
+                assert!(
+                    matches!(
+                        &*function,
+                        LambdaExpression::Abstraction { parameter, body }
+                        if parameter == "x" && matches!(&**body, LambdaExpression::Variable(name) if name == "x")
+                    )
+                );
+                assert!(matches!(&*argument, LambdaExpression::Variable(name) if name == "y"));
+            }
             _ => panic!("Expected Application, got {:?}", expr),
         }
     }
@@ -283,28 +392,28 @@ mod tests {
     #[test]
     fn test_fibonacci() {
         let input = r#"
-(λfib. λn. 
-  ((λf. λx. f (f x)) 
-    (λf. λg. λn. 
-      (λlte. λa. λb. 
-        lte n (λx. λy. y) 
-          a 
+(λfib. λn.
+  ((λf. λx. f (f x))
+    (λf. λg. λn.
+      (λlte. λa. λb.
+        lte n (λx. λy. y)
+          a
           (λx. g f g (λf. λx. f (f x)) n a b)
-      ) 
-      (λm. λn. λt. λf. m (λx. n t (λx. f)) t) 
-      (λf. λx. f x) 
+      )
+      (λm. λn. λt. λf. m (λx. n t (λx. f)) t)
+      (λf. λx. f x)
       (λf. λx. f (f x))
-    ) 
-    (λf. λg. λn. 
-      (λlte. λa. λb. 
-        lte n (λx. λy. y) 
-          a 
+    )
+    (λf. λg. λn.
+      (λlte. λa. λb.
+        lte n (λx. λy. y)
+          a
           (λx. g f g (λf. λx. f (f x)) n a b)
-      ) 
-      (λm. λn. λt. λf. m (λx. n t (λx. f)) t) 
-      (λf. λx. f x) 
+      )
+      (λm. λn. λt. λf. m (λx. n t (λx. f)) t)
+      (λf. λx. f x)
       (λf. λx. f (f x))
-    ) 
+    )
     n
   )
 ) 5
@@ -360,7 +469,7 @@ mod tests {
                                                             _ => panic!("Expected Y combinator structure, got {:?}", y_combinator),
                                                         }
 
-                                                        // 验证 Y 组合子的第一个参数: λf. λg. λn. ...
+                                                        // 证 Y 组合子的第一个参数: λf. λg. λn. ...
                                                         match &**y_arg1 {
                                                             LambdaExpression::Abstraction { parameter: f_param, body: f_body } => {
                                                                 assert_eq!(f_param, "f");
@@ -368,7 +477,7 @@ mod tests {
                                                                     LambdaExpression::Abstraction { parameter: g_param, body: g_body } => {
                                                                         assert_eq!(g_param, "g");
                                                                         match &**g_body {
-                                                                            LambdaExpression::Abstraction { parameter: n_param, body: n_body } => {
+                                                                            LambdaExpression::Abstraction { parameter: n_param, body: _n_body } => {
                                                                                 assert_eq!(n_param, "n");
                                                                                 // 这里可以继续验证斐波那契函数的主体结构
                                                                                 // 包括 lte、递归调用等
@@ -385,7 +494,7 @@ mod tests {
                                                     _ => panic!("Expected Y combinator application, got {:?}", app2),
                                                 }
 
-                                                // 验证 Y 组合子的第二个参数（结构与第一个参数相同）
+                                                // 验证 Y 组子的第二个参数（结构与第一个参数相同）
                                                 match &**arg2 {
                                                     LambdaExpression::Abstraction { parameter: f_param, body: f_body } => {
                                                         assert_eq!(f_param, "f");
@@ -429,6 +538,42 @@ mod tests {
                 }
             }
             _ => panic!("Expected Application, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_pair() {
+        let input = "pair 1 2";
+        let result = parse_lambda(input);
+        assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
+        let expr = result.unwrap();
+        match expr {
+            LambdaExpression::Pair(first, second) => {
+                assert!(matches!(&*first, LambdaExpression::Number(1)));
+                assert!(matches!(&*second, LambdaExpression::Number(2)));
+            },
+            _ => panic!("Expected Pair, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_complex_pair() {
+        let input = "pair (λx. x) (pair 1 2)";
+        let result = parse_lambda(input);
+        assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
+        let expr = result.unwrap();
+        match expr {
+            LambdaExpression::Pair(first, second) => {
+                assert!(matches!(&*first, LambdaExpression::Abstraction { .. }));
+                match &*second {
+                    LambdaExpression::Pair(inner_first, inner_second) => {
+                        assert!(matches!(&**inner_first, LambdaExpression::Number(1)));
+                        assert!(matches!(&**inner_second, LambdaExpression::Number(2)));
+                    },
+                    _ => panic!("Expected inner Pair, got {:?}", second),
+                }
+            },
+            _ => panic!("Expected Pair, got {:?}", expr),
         }
     }
 }

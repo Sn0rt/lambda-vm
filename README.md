@@ -14,12 +14,10 @@ The interpreter supports the following instructions and operations:
 2. **Church Numerals**
    - Encoding: Automatically handled by the interpreter
    - Decoding: Automatically handled by the interpreter
-   - Addition: `add`
-   - Subtraction: `subtract`
-   - Multiplication: `multiply`
    - Predecessor: `pred`
    - Successor: `succ`
    - Is Zero: `is_zero`
+   - Multiplication: `multiply` or `*`
 
 3. **Church Booleans**
    - True: `true` (encoded as `λx. λy. x`)
@@ -29,12 +27,12 @@ The interpreter supports the following instructions and operations:
    - Not: `not`
 
 4. **Control Flow**
-   - If-Then-Else: `ifelse`
+   - If-Then-Else: `ifthenelse`
 
 5. **Pairs**
    - Create Pair: `pair`
-   - First Element: `fst`
-   - Second Element: `snd`
+   - First Element: `first`
+   - Second Element: `second`
 
 6. **Recursion**
    - Y Combinator: `Y`
@@ -43,9 +41,11 @@ The interpreter supports the following instructions and operations:
 
 Here are some examples of how to use the interpreter:
 
-1. Church Numeral Addition:
+1. Church Numeral Operations:
    ```
-   (add (church_encode 2) (church_encode 3))
+   (multiply 2 3)
+   (is_zero 0)
+   (pred (succ 5))
    ```
 
 2. Boolean Operations:
@@ -57,18 +57,21 @@ Here are some examples of how to use the interpreter:
 
 3. Conditional Statement:
    ```
-   (ifelse (is_zero 0) 42 58)
+   (ifthenelse (is_zero 0) 1 2)
    ```
 
-4. Factorial using Y Combinator:
+4. Pair Operations:
    ```
-   (Y (λf. λn. (ifelse (is_zero n) 1 (multiply n (f (pred n))))))
+   (pair 1 2)
+   (first (pair 1 2))
+   (second (pair 1 2))
+   ```
+
+5. Factorial using Y Combinator:
+   ```
+   (Y (λf. λn. (ifthenelse (is_zero n) 1 (multiply n (f (pred n))))))
    ```
 
 ## Running Tests
 
 To run the tests and see examples of the interpreter in action, use the following command:
-
-```rust
-$ cargo test
-```

@@ -1,6 +1,8 @@
 use crate::lambda_parse::{parse_lambda, LambdaExpression};
 use std::rc::Rc;
 use uuid::Uuid;
+use log::{debug, trace, info};
+use colored::*;
 
 pub struct VM {
     max_iterations: usize,
@@ -9,7 +11,7 @@ pub struct VM {
 impl VM {
     pub fn new() -> Self {
         VM {
-            max_iterations: 1000000, // 默认值
+            max_iterations: 1000000, // default max iterations
         }
     }
 
@@ -18,43 +20,56 @@ impl VM {
     }
 
     pub fn eval(&self, expr: &LambdaExpression) -> Rc<LambdaExpression> {
-        println!("Evaluating expression: {:?}", expr);
+        debug!("{}", "Starting evaluation:".cyan().bold());
         let mut current = Rc::new(expr.clone());
-        for _ in 0..self.max_iterations {
+        for i in 0..self.max_iterations {
             let next = self.eval_recursive(&current, 0);
             if *next == *current {
+                debug!("{}", "Evaluation complete:".green().bold());
+                debug!("  {}", next.to_string().green());
                 return next;
             }
             current = next;
+            if i % 1000 == 0 {
+                debug!("Iteration {}: {}", i, current.to_string());
+            }
         }
+        debug!("{}", "Reached maximum iterations".yellow().bold());
         current
     }
 
     fn eval_recursive(&self, expr: &LambdaExpression, depth: usize) -> Rc<LambdaExpression> {
-        println!("Depth: {}, Evaluating: {:?}", depth, expr);
         if depth >= self.max_iterations {
-            println!("Reached maximum depth of {}", self.max_iterations);
+            debug!("{}", "Reached maximum depth".yellow().bold());
             return Rc::new(expr.clone());
         }
 
         let result = match expr {
-            LambdaExpression::Variable(_) => Rc::new(expr.clone()),
-            LambdaExpression::Number(_) => Rc::new(expr.clone()),
-            LambdaExpression::Boolean(_) => Rc::new(expr.clone()),
+            LambdaExpression::Variable(_) => {
+                debug!("{}Variable: {}", "  ".repeat(depth), expr.to_string());
+                Rc::new(expr.clone())
+            }
+            LambdaExpression::Number(_) => {
+                debug!("{}Number: {}", "  ".repeat(depth), expr.to_string());
+                Rc::new(expr.clone())
+            }
+            LambdaExpression::Boolean(_) => {
+                debug!("{}Boolean: {}", "  ".repeat(depth), expr.to_string());
+                Rc::new(expr.clone())
+            }
             LambdaExpression::Abstraction { parameter, body } => {
-                println!("Depth: {}, Evaluating abstraction body", depth);
+                debug!("{}Abstraction: {}", "  ".repeat(depth), expr.to_string());
                 Rc::new(LambdaExpression::Abstraction {
                     parameter: parameter.clone(),
                     body: self.eval_recursive(body, depth + 1),
                 })
             }
             LambdaExpression::Application { function, argument } => {
-                println!("Depth: {}, Evaluating application", depth);
+                debug!("{}Application: {}", "  ".repeat(depth), expr.to_string());
                 let eval_func = self.eval_recursive(function, depth + 1);
                 let eval_arg = self.eval_recursive(argument, depth + 1);
                 match &*eval_func {
                     LambdaExpression::Abstraction { parameter, body } => {
-                        println!("Depth: {}, Applying function", depth);
                         let substituted = self.substitute(body, parameter, &eval_arg);
                         self.eval_recursive(&substituted, depth + 1)
                     }
@@ -65,17 +80,17 @@ impl VM {
                 }
             }
             LambdaExpression::IsZero(inner) => {
+                debug!("{}IsZero: {}", "  ".repeat(depth), expr.to_string());
                 let eval_inner = self.eval_recursive(inner, depth + 1);
-                println!("IsZero: evaluating {:?}", eval_inner);
                 match &*eval_inner {
                     LambdaExpression::Abstraction { parameter: f, body } => {
                         match &**body {
                             LambdaExpression::Abstraction { parameter: x, body: inner_body } => {
                                 if **inner_body == LambdaExpression::Variable(x.clone()) {
-                                    println!("IsZero: it is zero");
+                                    trace!("{}IsZero: it is zero", "  ".repeat(depth));
                                     Rc::new(parse_lambda("λx. λy. x").unwrap())  // true
                                 } else {
-                                    println!("IsZero: it is not zero");
+                                    trace!("{}IsZero: it is not zero", "  ".repeat(depth));
                                     Rc::new(parse_lambda("λx. λy. y").unwrap())  // false
                                 }
                             },
@@ -87,18 +102,17 @@ impl VM {
             },
             LambdaExpression::IfThenElse(condition, then_expr, else_expr) => {
                 let eval_condition = self.eval_recursive(condition, depth + 1);
-                println!("Evaluated condition: {:?}", eval_condition);
                 match eval_condition.to_church_bool() {
                     Some(true) => {
-                        println!("Condition is true, evaluating then_expr");
+                        debug!("{}Condition is true, evaluating then_expr", "  ".repeat(depth));
                         self.eval_recursive(then_expr, depth + 1)
                     },
                     Some(false) => {
-                        println!("Condition is false, evaluating else_expr");
+                        debug!("{}Condition is false, evaluating else_expr", "  ".repeat(depth));
                         self.eval_recursive(else_expr, depth + 1)
                     },
                     None => {
-                        println!("Condition is not a Church boolean, returning unevaluated IfThenElse");
+                        debug!("{}Condition is not a Church boolean, returning unevaluated IfThenElse", "  ".repeat(depth));
                         Rc::new(LambdaExpression::IfThenElse(
                             eval_condition.clone(),
                             then_expr.clone(),
@@ -107,8 +121,8 @@ impl VM {
                     },
                 }
             },
-
             LambdaExpression::Pred(inner) => {
+                debug!("{}Pred: {}", "  ".repeat(depth), expr.to_string());
                 let eval_inner = self.eval_recursive(inner, depth + 1);
                 match &*eval_inner {
                     LambdaExpression::Abstraction { .. } => {
@@ -125,6 +139,7 @@ impl VM {
                 }
             }
             LambdaExpression::Succ(inner) => {
+                debug!("{}Succ: {}", "  ".repeat(depth), expr.to_string());
                 let eval_inner = self.eval_recursive(inner, depth + 1);
                 match &*eval_inner {
                     LambdaExpression::Abstraction { .. } => {
@@ -164,6 +179,7 @@ impl VM {
                 }
             }
             LambdaExpression::And(left, right) => {
+                debug!("{}And: {}", "  ".repeat(depth), expr.to_string());
                 let eval_left = self.eval_recursive(left, depth + 1);
                 let eval_right = self.eval_recursive(right, depth + 1);
                 let true_expr = parse_lambda("λx. λy. x").unwrap();
@@ -186,6 +202,7 @@ impl VM {
                 }
             }
             LambdaExpression::Not(inner) => {
+                debug!("{}Not: {}", "  ".repeat(depth), expr.to_string());
                 let eval_inner = self.eval_recursive(inner, depth + 1);
                 let true_expr = parse_lambda("λx. λy. x").unwrap();
                 let false_expr = parse_lambda("λx. λy. y").unwrap();
@@ -196,11 +213,13 @@ impl VM {
                 }
             }
             LambdaExpression::Pair(first, second) => {
+                debug!("{}Pair: {}", "  ".repeat(depth), expr.to_string());
                 let eval_first = self.eval_recursive(first, depth + 1);
                 let eval_second = self.eval_recursive(second, depth + 1);
                 Rc::new(LambdaExpression::Pair(eval_first, eval_second))
             }
             LambdaExpression::First(pair) => {
+                debug!("{}First: {}", "  ".repeat(depth), expr.to_string());
                 let eval_pair = self.eval_recursive(pair, depth + 1);
                 match &*eval_pair {
                     LambdaExpression::Pair(first, _) => first.clone(),
@@ -208,6 +227,7 @@ impl VM {
                 }
             }
             LambdaExpression::Second(pair) => {
+                debug!("{}Second: {}", "  ".repeat(depth), expr.to_string());
                 let eval_pair = self.eval_recursive(pair, depth + 1);
                 match &*eval_pair {
                     LambdaExpression::Pair(_, second) => second.clone(),
@@ -216,11 +236,14 @@ impl VM {
             }
             // not allow Y combinator nested
             // TODO
-            LambdaExpression::YCombinator(f) => self.eval_y_combinator(f, depth),
+            LambdaExpression::YCombinator(f) => {
+                debug!("{}YCombinator: {}", "  ".repeat(depth), expr.to_string());
+                self.eval_y_combinator(f, depth)
+            }
 
             // show error and not support yet
             _ => {
-                println!("Error: unsupported expression {:?}", expr);
+                debug!("{}Unsupported expression: {}", "  ".repeat(depth), expr.to_string());
                 Rc::new(expr.clone())
             }
         };
@@ -993,7 +1016,7 @@ mod tests {
             argument: Rc::new(input),
         };
 
-        println!("Starting evaluation");
+        println!("Starting evaluation of {:?}", result);
         let result = vm.eval(&result);
         println!("Evaluation complete");
         println!("Result: {:?}", result);

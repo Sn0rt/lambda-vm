@@ -2,6 +2,7 @@ use std::rc::Rc;
 use std::iter::Peekable;
 use std::vec::IntoIter;
 use std::fmt;
+use log::debug;
 
 // <expression>  :== <abstraction> | <application> | <variable>
 // <abstraction> :== λ <variable> . <expression>
@@ -123,6 +124,12 @@ pub struct ParseError {
     pub message: String,
 }
 
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
 pub fn parse_lambda(input: &str) -> Result<LambdaExpression, ParseError> {
     let mut tokens = tokenize(input);
     let result = parse_lambda_expression(&mut tokens);
@@ -192,7 +199,7 @@ fn parse_lambda_expression(tokens: &mut Peekable<IntoIter<String>>) -> Result<La
                 argument: Rc::new(arg),
             };
         }
-        println!("Updated expression: {:?}", expr);
+        debug!("parse_expr: {:?}", expr);
     }
     Ok(expr)
 }

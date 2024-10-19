@@ -2,6 +2,26 @@
 
 This project implements a Lambda Calculus interpreter in Rust. It supports various operations and Church encodings for numbers and boolean values.
 
+## REPL (Read-Eval-Print Loop)
+
+This project includes a REPL for interactive use of the Lambda Calculus interpreter. To start the REPL, run the project's main executable.
+
+### REPL Commands
+
+The REPL supports the following commands:
+
+- `:help` or `:?` - Show the help message
+- `:exit` - Exit the REPL
+- `:clear` - Clear the screen
+- `:last` - Show the last result
+- `:log <level>` - Set the log level (error, warn, info, debug, trace)
+
+To evaluate a Lambda Calculus expression, simply type it into the REPL and press Enter.
+
+### REPL Example
+
+[![asciicast](https://asciinema.org/a/Vak2OEvfS9cNdmgSxuEmXYmkg.svg)](https://asciinema.org/a/Vak2OEvfS9cNdmgSxuEmXYmkg)
+
 ## Supported Instructions
 
 The interpreter supports the following instructions and operations:
@@ -72,6 +92,3 @@ Here are some examples of how to use the interpreter:
    (Y (λf. λn. (ifthenelse (is_zero n) 1 (multiply n (f (pred n))))))
    ```
 
-## Running Tests
-
-To run the tests and see examples of the interpreter in action, use the following command:

@@ -232,8 +232,8 @@ fn parse_atomic_expression(tokens: &mut Peekable<IntoIter<String>>) -> Result<La
                 "multiply" => Ok(parse_lambda("λm. λn. λf. m (n f)").unwrap()),
 
                 // logic operations
-                "and" => parse_binary_op(tokens, |a, b| LambdaExpression::And(a, b)),
-                "or" => parse_binary_op(tokens, |a, b| LambdaExpression::Or(a, b)),
+                "and" => parse_binary_op(tokens, LambdaExpression::And),
+                "or" => parse_binary_op(tokens, LambdaExpression::Or),
                 "not" => parse_unary_op(tokens, LambdaExpression::Not),
 
                 // Y
@@ -251,7 +251,7 @@ fn parse_atomic_expression(tokens: &mut Peekable<IntoIter<String>>) -> Result<La
                     let expr = parse_atomic_expression(tokens)?;
                     Ok(LambdaExpression::IsZero(Rc::new(expr)))
                 },
-                "*" => parse_binary_op(tokens, |a, b| LambdaExpression::Multiply(a, b)),
+                "*" => parse_binary_op(tokens, LambdaExpression::Multiply),
 
                 // branch
                "ifthenelse" => parse_ifthenelse(tokens, LambdaExpression::IfThenElse),
@@ -301,7 +301,7 @@ where
 
 fn parse_abstraction(tokens: &mut Peekable<IntoIter<String>>) -> Result<LambdaExpression, ParseError> {
     let mut parameters = Vec::new();
-    while let Some(token) = tokens.next() {
+    for token in tokens.by_ref() {
         if token == "." {
             break;
         }

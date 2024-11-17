@@ -1,7 +1,7 @@
 use crate::lambda_parse::{parse_lambda, LambdaExpression};
 use std::rc::Rc;
 use uuid::Uuid;
-use log::{debug, trace, info};
+use log::{debug, trace};
 use colored::*;
 
 pub struct VM {
@@ -83,7 +83,7 @@ impl VM {
                 debug!("{}IsZero: {}", "  ".repeat(depth), expr.to_string());
                 let eval_inner = self.eval_recursive(inner, depth + 1);
                 match &*eval_inner {
-                    LambdaExpression::Abstraction { parameter: f, body } => {
+                    LambdaExpression::Abstraction { parameter: _f, body } => {
                         match &**body {
                             LambdaExpression::Abstraction { parameter: x, body: inner_body } => {
                                 if **inner_body == LambdaExpression::Variable(x.clone()) {
@@ -157,7 +157,7 @@ impl VM {
                 let eval_left = self.eval_recursive(left, depth + 1);
                 let eval_right = self.eval_recursive(right, depth + 1);
                 match (&*eval_left, &*eval_right) {
-                    (LambdaExpression::Number(n1), LambdaExpression::Number(n2)) => {
+                    (LambdaExpression::Number(_n1), LambdaExpression::Number(_n2)) => {
                         // Implement multiplication for your number representation
                         // This is a placeholder and needs to be implemented correctly
                         Rc::new(LambdaExpression::Number(Rc::new(LambdaExpression::Number(
@@ -240,12 +240,6 @@ impl VM {
                 debug!("{}YCombinator: {}", "  ".repeat(depth), expr.to_string());
                 self.eval_y_combinator(f, depth)
             }
-
-            // show error and not support yet
-            _ => {
-                debug!("{}Unsupported expression: {}", "  ".repeat(depth), expr.to_string());
-                Rc::new(expr.clone())
-            }
         };
 
         if *result == *expr {
@@ -281,7 +275,7 @@ impl VM {
         var: &str,
         replacement: &LambdaExpression,
     ) -> LambdaExpression {
-        let result = match expr {
+        match expr {
             LambdaExpression::Variable(name) if name == var => replacement.clone(),
             LambdaExpression::Variable(_) => expr.clone(),
             LambdaExpression::Number(_) => expr.clone(),
@@ -350,8 +344,7 @@ impl VM {
             LambdaExpression::YCombinator(inner) => {
                 LambdaExpression::YCombinator(Rc::new(self.substitute(inner, var, replacement)))
             }
-        };
-        result
+        }
     }
 
     fn alpha_convert(&self, param: &str, body: &LambdaExpression) -> (String, LambdaExpression) {
@@ -360,6 +353,7 @@ impl VM {
         (new_param, new_body)
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn occurs_free(&self, var: &str, expr: &LambdaExpression) -> bool {
         match expr {
             LambdaExpression::Variable(name) => name == var,
@@ -402,6 +396,12 @@ impl VM {
     }
 }
 
+impl Default for VM {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn church_encode(n: u64) -> LambdaExpression {
     let body = (0..n).fold(LambdaExpression::Variable("x".to_string()), |acc, _| {
         LambdaExpression::Application {
@@ -421,18 +421,17 @@ pub fn church_encode(n: u64) -> LambdaExpression {
 pub fn church_decode(expr: &LambdaExpression) -> Result<u64, String> {
     fn count_applications(expr: &LambdaExpression) -> u64 {
         match expr {
-            LambdaExpression::Application { function, argument } => {
+            LambdaExpression::Application { function: _, argument } => {
                 1 + count_applications(argument)
             }
-            LambdaExpression::Variable(_) => 0,
             _ => 0,
         }
     }
 
     match expr {
-        LambdaExpression::Abstraction { parameter: f, body } => match &**body {
+        LambdaExpression::Abstraction { parameter: _f, body } => match &**body {
             LambdaExpression::Abstraction {
-                parameter: x,
+                parameter: _x,
                 body: inner_body,
             } => Ok(count_applications(inner_body)),
             _ => Err(format!(
@@ -478,28 +477,16 @@ mod tests {
     use super::*;
     use crate::lambda_parse::parse_lambda;
 
+    // check expr === value return boolean
     fn is_church_numeral(expr: &LambdaExpression, value: u64) -> bool {
         match expr {
-            LambdaExpression::Abstraction { parameter: f, body } => match &**body {
-                LambdaExpression::Abstraction {
-                    parameter: x,
-                    body: inner_body,
-                } => {
-                    let mut current = inner_body;
-                    let mut count = 0;
-                    while let LambdaExpression::Application { function, argument } = &**current {
-                        if !matches!(&**function, LambdaExpression::Variable(name) if name == f) {
-                            return false;
-                        }
-                        current = argument;
-                        count += 1;
-                    }
-                    matches!(&**current, LambdaExpression::Variable(name) if name == x)
-                        && count == value
-                }
-                _ => false,
+            LambdaExpression::Abstraction { parameter: _f, body } => match &**body {
+                LambdaExpression::Abstraction { parameter: _x, body: _inner_body } => {
+                    church_decode(expr).map_or(false, |n| n == value)
+                },
+                _ => false
             },
-            _ => false,
+            _ => false
         }
     }
 

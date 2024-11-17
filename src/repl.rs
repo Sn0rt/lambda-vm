@@ -2,7 +2,7 @@ use crate::lambda_parse::{parse_lambda, LambdaExpression};
 use crate::lambda_vm::{VM, church_decode};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
-use log::{info, error, debug, trace, LevelFilter};
+use log::{debug, LevelFilter};
 use colored::*;
 use std::rc::Rc;
 
@@ -16,7 +16,7 @@ fn print_help() {
     println!("║  {:<20} - Clear the screen          ║", ":clear".yellow());
     println!("║  {:<20} - Show the last result      ║", ":last".yellow());
     println!("║  {:<20} - Set log level             ║", ":log <level>".yellow());
-    println!("{}", "║    (error, warn, info, debug, trace)              ║");
+    println!("║    (error, warn, info, debug, trace)  ║");
     println!("{}", "╠═══════════════════════════════════════════════════╣".cyan());
     println!("{}", "║ Enter a lambda calculus expression to evaluate it ║".cyan());
     println!("{}", "╚═══════════════════════════════════════════════════╝".cyan());

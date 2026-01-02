@@ -1,8 +1,8 @@
 use crate::lambda_parse::{parse_lambda, LambdaExpression};
+use colored::*;
+use log::{debug, trace};
 use std::rc::Rc;
 use uuid::Uuid;
-use log::{debug, trace};
-use colored::*;
 
 pub struct VM {
     max_iterations: usize,
@@ -26,12 +26,12 @@ impl VM {
             let next = self.eval_recursive(&current, 0);
             if *next == *current {
                 debug!("{}", "Evaluation complete:".green().bold());
-                debug!("  {}", next.to_string().green());
+                debug!("  {}", format!("{next}").green());
                 return next;
             }
             current = next;
             if i % 1000 == 0 {
-                debug!("Iteration {}: {}", i, current.to_string());
+                debug!("Iteration {}: {}", i, current);
             }
         }
         debug!("{}", "Reached maximum iterations".yellow().bold());
@@ -46,26 +46,26 @@ impl VM {
 
         let result = match expr {
             LambdaExpression::Variable(_) => {
-                debug!("{}Variable: {}", "  ".repeat(depth), expr.to_string());
+                debug!("{}Variable: {}", "  ".repeat(depth), expr);
                 Rc::new(expr.clone())
             }
             LambdaExpression::Number(_) => {
-                debug!("{}Number: {}", "  ".repeat(depth), expr.to_string());
+                debug!("{}Number: {}", "  ".repeat(depth), expr);
                 Rc::new(expr.clone())
             }
             LambdaExpression::Boolean(_) => {
-                debug!("{}Boolean: {}", "  ".repeat(depth), expr.to_string());
+                debug!("{}Boolean: {}", "  ".repeat(depth), expr);
                 Rc::new(expr.clone())
             }
             LambdaExpression::Abstraction { parameter, body } => {
-                debug!("{}Abstraction: {}", "  ".repeat(depth), expr.to_string());
+                debug!("{}Abstraction: {}", "  ".repeat(depth), expr);
                 Rc::new(LambdaExpression::Abstraction {
                     parameter: parameter.clone(),
                     body: self.eval_recursive(body, depth + 1),
                 })
             }
             LambdaExpression::Application { function, argument } => {
-                debug!("{}Application: {}", "  ".repeat(depth), expr.to_string());
+                debug!("{}Application: {}", "  ".repeat(depth), expr);
                 let eval_func = self.eval_recursive(function, depth + 1);
                 let eval_arg = self.eval_recursive(argument, depth + 1);
                 match &*eval_func {
@@ -80,49 +80,64 @@ impl VM {
                 }
             }
             LambdaExpression::IsZero(inner) => {
-                debug!("{}IsZero: {}", "  ".repeat(depth), expr.to_string());
+                debug!("{}IsZero: {}", "  ".repeat(depth), expr);
                 let eval_inner = self.eval_recursive(inner, depth + 1);
                 match &*eval_inner {
-                    LambdaExpression::Abstraction { parameter: _f, body } => {
+                    LambdaExpression::Abstraction {
+                        parameter: _f,
+                        body,
+                    } => {
                         match &**body {
-                            LambdaExpression::Abstraction { parameter: x, body: inner_body } => {
+                            LambdaExpression::Abstraction {
+                                parameter: x,
+                                body: inner_body,
+                            } => {
                                 if **inner_body == LambdaExpression::Variable(x.clone()) {
                                     trace!("{}IsZero: it is zero", "  ".repeat(depth));
-                                    Rc::new(parse_lambda("λx. λy. x").unwrap())  // true
+                                    Rc::new(parse_lambda("λx. λy. x").unwrap()) // true
                                 } else {
                                     trace!("{}IsZero: it is not zero", "  ".repeat(depth));
-                                    Rc::new(parse_lambda("λx. λy. y").unwrap())  // false
+                                    Rc::new(parse_lambda("λx. λy. y").unwrap()) // false
                                 }
-                            },
+                            }
                             _ => Rc::new(LambdaExpression::IsZero(eval_inner)),
                         }
-                    },
+                    }
                     _ => Rc::new(LambdaExpression::IsZero(eval_inner)),
                 }
-            },
+            }
             LambdaExpression::IfThenElse(condition, then_expr, else_expr) => {
                 let eval_condition = self.eval_recursive(condition, depth + 1);
                 match eval_condition.to_church_bool() {
                     Some(true) => {
-                        debug!("{}Condition is true, evaluating then_expr", "  ".repeat(depth));
+                        debug!(
+                            "{}Condition is true, evaluating then_expr",
+                            "  ".repeat(depth)
+                        );
                         self.eval_recursive(then_expr, depth + 1)
-                    },
+                    }
                     Some(false) => {
-                        debug!("{}Condition is false, evaluating else_expr", "  ".repeat(depth));
+                        debug!(
+                            "{}Condition is false, evaluating else_expr",
+                            "  ".repeat(depth)
+                        );
                         self.eval_recursive(else_expr, depth + 1)
-                    },
+                    }
                     None => {
-                        debug!("{}Condition is not a Church boolean, returning unevaluated IfThenElse", "  ".repeat(depth));
+                        debug!(
+                            "{}Condition is not a Church boolean, returning unevaluated IfThenElse",
+                            "  ".repeat(depth)
+                        );
                         Rc::new(LambdaExpression::IfThenElse(
                             eval_condition.clone(),
                             then_expr.clone(),
                             else_expr.clone(),
                         ))
-                    },
+                    }
                 }
-            },
+            }
             LambdaExpression::Pred(inner) => {
-                debug!("{}Pred: {}", "  ".repeat(depth), expr.to_string());
+                debug!("{}Pred: {}", "  ".repeat(depth), expr);
                 let eval_inner = self.eval_recursive(inner, depth + 1);
                 match &*eval_inner {
                     LambdaExpression::Abstraction { .. } => {
@@ -139,7 +154,7 @@ impl VM {
                 }
             }
             LambdaExpression::Succ(inner) => {
-                debug!("{}Succ: {}", "  ".repeat(depth), expr.to_string());
+                debug!("{}Succ: {}", "  ".repeat(depth), expr);
                 let eval_inner = self.eval_recursive(inner, depth + 1);
                 match &*eval_inner {
                     LambdaExpression::Abstraction { .. } => {
@@ -179,7 +194,7 @@ impl VM {
                 }
             }
             LambdaExpression::And(left, right) => {
-                debug!("{}And: {}", "  ".repeat(depth), expr.to_string());
+                debug!("{}And: {}", "  ".repeat(depth), expr);
                 let eval_left = self.eval_recursive(left, depth + 1);
                 let eval_right = self.eval_recursive(right, depth + 1);
                 let true_expr = parse_lambda("λx. λy. x").unwrap();
@@ -202,7 +217,7 @@ impl VM {
                 }
             }
             LambdaExpression::Not(inner) => {
-                debug!("{}Not: {}", "  ".repeat(depth), expr.to_string());
+                debug!("{}Not: {}", "  ".repeat(depth), expr);
                 let eval_inner = self.eval_recursive(inner, depth + 1);
                 let true_expr = parse_lambda("λx. λy. x").unwrap();
                 let false_expr = parse_lambda("λx. λy. y").unwrap();
@@ -213,13 +228,13 @@ impl VM {
                 }
             }
             LambdaExpression::Pair(first, second) => {
-                debug!("{}Pair: {}", "  ".repeat(depth), expr.to_string());
+                debug!("{}Pair: {}", "  ".repeat(depth), expr);
                 let eval_first = self.eval_recursive(first, depth + 1);
                 let eval_second = self.eval_recursive(second, depth + 1);
                 Rc::new(LambdaExpression::Pair(eval_first, eval_second))
             }
             LambdaExpression::First(pair) => {
-                debug!("{}First: {}", "  ".repeat(depth), expr.to_string());
+                debug!("{}First: {}", "  ".repeat(depth), expr);
                 let eval_pair = self.eval_recursive(pair, depth + 1);
                 match &*eval_pair {
                     LambdaExpression::Pair(first, _) => first.clone(),
@@ -227,7 +242,7 @@ impl VM {
                 }
             }
             LambdaExpression::Second(pair) => {
-                debug!("{}Second: {}", "  ".repeat(depth), expr.to_string());
+                debug!("{}Second: {}", "  ".repeat(depth), expr);
                 let eval_pair = self.eval_recursive(pair, depth + 1);
                 match &*eval_pair {
                     LambdaExpression::Pair(_, second) => second.clone(),
@@ -237,7 +252,7 @@ impl VM {
             // not allow Y combinator nested
             // TODO
             LambdaExpression::YCombinator(f) => {
-                debug!("{}YCombinator: {}", "  ".repeat(depth), expr.to_string());
+                debug!("{}YCombinator: {}", "  ".repeat(depth), expr);
                 self.eval_y_combinator(f, depth)
             }
         };
@@ -421,15 +436,19 @@ pub fn church_encode(n: u64) -> LambdaExpression {
 pub fn church_decode(expr: &LambdaExpression) -> Result<u64, String> {
     fn count_applications(expr: &LambdaExpression) -> u64 {
         match expr {
-            LambdaExpression::Application { function: _, argument } => {
-                1 + count_applications(argument)
-            }
+            LambdaExpression::Application {
+                function: _,
+                argument,
+            } => 1 + count_applications(argument),
             _ => 0,
         }
     }
 
     match expr {
-        LambdaExpression::Abstraction { parameter: _f, body } => match &**body {
+        LambdaExpression::Abstraction {
+            parameter: _f,
+            body,
+        } => match &**body {
             LambdaExpression::Abstraction {
                 parameter: _x,
                 body: inner_body,
@@ -480,13 +499,17 @@ mod tests {
     // check expr === value return boolean
     fn is_church_numeral(expr: &LambdaExpression, value: u64) -> bool {
         match expr {
-            LambdaExpression::Abstraction { parameter: _f, body } => match &**body {
-                LambdaExpression::Abstraction { parameter: _x, body: _inner_body } => {
-                    church_decode(expr).map_or(false, |n| n == value)
-                },
-                _ => false
+            LambdaExpression::Abstraction {
+                parameter: _f,
+                body,
+            } => match &**body {
+                LambdaExpression::Abstraction {
+                    parameter: _x,
+                    body: _inner_body,
+                } => church_decode(expr).map_or(false, |n| n == value),
+                _ => false,
             },
-            _ => false
+            _ => false,
         }
     }
 
@@ -854,13 +877,13 @@ mod tests {
         let vm = VM::new();
 
         let test_cases = vec![
-            ("is_zero 0", parse_lambda("λx. λy. x").unwrap()),  // true
-            ("is_zero 1", parse_lambda("λx. λy. y").unwrap()),  // false
-            ("is_zero (pred 1)", parse_lambda("λx. λy. x").unwrap()),  // true
+            ("is_zero 0", parse_lambda("λx. λy. x").unwrap()), // true
+            ("is_zero 1", parse_lambda("λx. λy. y").unwrap()), // false
+            ("is_zero (pred 1)", parse_lambda("λx. λy. x").unwrap()), // true
             ("2 * 3", church_encode(6)),
             ("0 * 5", church_encode(0)),
-            ("is_zero (3 * 0)", parse_lambda("λx. λy. x").unwrap()),  // true
-            ("is_zero (2 * 3)", parse_lambda("λx. λy. y").unwrap()),  // false
+            ("is_zero (3 * 0)", parse_lambda("λx. λy. x").unwrap()), // true
+            ("is_zero (2 * 3)", parse_lambda("λx. λy. y").unwrap()), // false
         ];
 
         for (input, expected) in test_cases {
@@ -968,8 +991,13 @@ mod tests {
             match church_decode(&result) {
                 Ok(decoded) => {
                     println!("Decoded result: {}", decoded);
-                    assert_eq!(decoded, if n == 0 { 1 } else { n }, "Factorial of {} failed", n);
-                },
+                    assert_eq!(
+                        decoded,
+                        if n == 0 { 1 } else { n },
+                        "Factorial of {} failed",
+                        n
+                    );
+                }
                 Err(e) => panic!("Failed to decode result: {}", e),
             }
         }
@@ -1013,7 +1041,7 @@ mod tests {
             Ok(decoded) => {
                 println!("Decoded result: {}", decoded);
                 assert_eq!(decoded, 1, "Fibonacci of {} failed", n);
-            },
+            }
             Err(e) => panic!("Failed to decode result: {}", e),
         }
     }
